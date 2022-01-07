@@ -15,12 +15,20 @@ trait Http extends Protocol[Http] {
 }
 
 object Http {
-  case class HttpRpcId private(name: String)
+  case class HttpRpcRepoId(id: String)
+
+  abstract class HttpRpcRepo(id: String) {
+    protected implicit def repoId: HttpRpcRepoId = HttpRpcRepoId(id)
+  }
+
+  case class HttpRpcId private(repoId: HttpRpcRepoId, id: String) {
+    def string = s"${repoId.id}/$id"
+  }
 
   object HttpRpcId {
-    implicit def auto(implicit name: sourcecode.Name): HttpRpcId = HttpRpcId(name.value)
+    implicit def auto(implicit repoId: HttpRpcRepoId, name: sourcecode.Name): HttpRpcId = HttpRpcId(repoId, name.value)
 
-    implicit def string2id(name: String): HttpRpcId = HttpRpcId(name)
+    implicit def string2id(id: String)(implicit repoId: HttpRpcRepoId): HttpRpcId = HttpRpcId(repoId, id)
   }
 
   class HttpClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RpcClientImpl[F, Http] {
@@ -29,7 +37,7 @@ object Http {
       implicit val decoder: EntityDecoder[F, B] = rpc.bCodec.decoder
       client.expect[B](Request[F](
         method = Method.POST,
-        uri = uri / rpc.id.name
+        uri = uri / rpc.id.repoId.id / rpc.id.id
       ).withEntity(a))
     }
   }
@@ -47,10 +55,10 @@ object Http {
     impls.groupBy(_.rpc.id).foreach {
       case (id, impls) =>
         if (impls.size > 1)
-          throw new IllegalArgumentException(s"rpc id must be unique: ${id.name}")
+          throw new IllegalArgumentException(s"rpc id must be unique: ${id.string}")
     }
 
-    val implMap = impls.map(impl => impl.rpc.id.name -> impl).toMap
+    val implMap = impls.map(impl => impl.rpc.id.string -> impl).toMap
 
     def run[A, B, Id](impl: RpcServerImpl[F, A, B, Http], request: Request[F]): F[Response[F]] = {
       implicit val decoder: EntityDecoder[F, A] = impl.rpc.aCodec.decoder
