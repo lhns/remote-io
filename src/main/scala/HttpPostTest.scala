@@ -1,18 +1,19 @@
-import Http.{HttpClientImpl, HttpRpcRepo}
 import cats.effect.IO
 import cats.effect.unsafe.IORuntime
+import de.lolhens.remoteio.HttpPost.{HttpPostClientImpl, HttpPostRpcRepo}
+import de.lolhens.remoteio.{HttpPost, Rpc}
 import org.http4s.Uri
 import org.http4s.blaze.server.BlazeServerBuilder
 import org.http4s.jdkhttpclient.JdkHttpClient
 import org.http4s.server.Router
 
-object Main {
-  object TestRepo extends HttpRpcRepo("test") {
-    val hello = Rpc[IO, String, String, Http]()
-    val world = Rpc[IO, String, String, Http]()
+object HttpPostTest {
+  object TestRepo extends HttpPostRpcRepo("test") {
+    val hello = Rpc[IO, String, String, HttpPost]()
+    val world = Rpc[IO, String, String, HttpPost]()
   }
 
-  val routes = Http.toRoutes(
+  val routes = HttpPost.toRoutes(
     TestRepo.hello.impl { string =>
       IO.pure("hello " + string)
     },
@@ -28,7 +29,7 @@ object Main {
       .resource
       .use { _ =>
         JdkHttpClient.simple[IO].use { client =>
-          implicit val httpProtocolImpl = new HttpClientImpl[IO](client, Uri.unsafeFromString("http://localhost:8080/api"))
+          implicit val rpcClient = new HttpPostClientImpl[IO](client, Uri.unsafeFromString("http://localhost:8080/api"))
 
           TestRepo.hello("a").map { e => println(e) } >>
             TestRepo.world("b").map { e => println(e) }

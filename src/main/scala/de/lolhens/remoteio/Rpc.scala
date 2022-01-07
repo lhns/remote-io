@@ -1,4 +1,6 @@
-import Rpc.{Protocol, RpcServerImpl}
+package de.lolhens.remoteio
+
+import de.lolhens.remoteio.Rpc.{Protocol, RpcServerImpl}
 
 final case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P,
                                                            id: P#Id)
