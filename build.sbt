@@ -9,5 +9,7 @@ lazy val root = (project in file("."))
       "org.typelevel" %% "cats-effect" % "3.2.0",
       "org.http4s" %% "http4s-server" % "0.23.7",
       "org.http4s" %% "http4s-client" % "0.23.7",
+      "org.http4s" %% "http4s-jdk-http-client" % "0.5.0",
+      "org.http4s" %% "http4s-blaze-server" % "0.23.7",
     )
   )
