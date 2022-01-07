@@ -17,6 +17,15 @@ object Rpc {
                                           bCodec: P#Codec[F, B]): Rpc[F, A, B, P] =
     new Rpc[F, A, B, P](protocol, id)(aCodec, bCodec)
 
+  def apply[F[_], A, B, P <: Protocol[P]]()
+                                         (implicit
+                                          id: P#Id,
+                                          protocol: P,
+                                          aCodec: P#Codec[F, A],
+                                          bCodec: P#Codec[F, B],
+                                          dummyImplicit: DummyImplicit): Rpc[F, A, B, P] =
+    new Rpc[F, A, B, P](protocol, id)(aCodec, bCodec)
+
   trait Protocol[P <: Protocol[P]] {
     type Id
 

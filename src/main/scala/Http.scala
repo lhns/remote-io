@@ -1,4 +1,4 @@
-import Http.{HttpClientImpl, HttpCodec}
+import Http.{HttpClientImpl, HttpCodec, HttpRpcId}
 import Rpc.{Protocol, RpcClientImpl, RpcServerImpl}
 import cats.data.{Kleisli, OptionT}
 import cats.effect.kernel.Sync
@@ -7,7 +7,7 @@ import org.http4s.client.Client
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Request, Response, Status, Uri}
 
 trait Http extends Protocol[Http] {
-  override type Id = String
+  override type Id = HttpRpcId
 
   override type Codec[F[_], A] = HttpCodec[F, A]
 
@@ -15,13 +15,21 @@ trait Http extends Protocol[Http] {
 }
 
 object Http {
+  case class HttpRpcId private(name: String)
+
+  object HttpRpcId {
+    implicit def auto(implicit name: sourcecode.Name): HttpRpcId = HttpRpcId(name.value)
+
+    implicit def string2id(name: String): HttpRpcId = HttpRpcId(name)
+  }
+
   class HttpClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RpcClientImpl[F, Http] {
     override def run[A, B, Id](rpc: Rpc[F, A, B, Http], a: A): F[B] = {
       implicit val encoder: EntityEncoder[F, A] = rpc.aCodec.encoder
       implicit val decoder: EntityDecoder[F, B] = rpc.bCodec.decoder
       client.expect[B](Request[F](
         method = Method.POST,
-        uri = uri / rpc.id
+        uri = uri / rpc.id.name
       ).withEntity(a))
     }
   }
@@ -37,12 +45,12 @@ object Http {
 
   def toRoutes[F[_] : Sync](impls: RpcServerImpl[F, _, _, Http]*): HttpRoutes[F] = {
     impls.groupBy(_.rpc.id).foreach {
-      case (name, impls) =>
+      case (id, impls) =>
         if (impls.size > 1)
-          throw new IllegalArgumentException(s"rpc must be registered only once: $name")
+          throw new IllegalArgumentException(s"rpc id must be unique: ${id.name}")
     }
 
-    val implMap = impls.map(impl => impl.rpc.id -> impl).toMap
+    val implMap = impls.map(impl => impl.rpc.id.name -> impl).toMap
 
     def run[A, B, Id](impl: RpcServerImpl[F, A, B, Http], request: Request[F]): F[Response[F]] = {
       implicit val decoder: EntityDecoder[F, A] = impl.rpc.aCodec.decoder

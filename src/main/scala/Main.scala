@@ -7,8 +7,8 @@ import org.http4s.jdkhttpclient.JdkHttpClient
 import org.http4s.server.Router
 
 object Main {
-  val hello: Rpc[IO, String, String, Http] = Rpc("hello")
-  val world: Rpc[IO, String, String, Http] = Rpc("world")
+  val hello = Rpc[IO, String, String, Http]()
+  val world = Rpc[IO, String, String, Http]()
 
   val routes = Http.toRoutes(
     hello.impl { string =>
