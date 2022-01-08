@@ -1,6 +1,6 @@
 package de.lolhens.remoteio
 
-import de.lolhens.remoteio.Rpc.{Protocol, RpcServerImpl}
+import de.lolhens.remoteio.Rpc.{Protocol, RpcServerImpl, RpcServerImpls}
 
 sealed abstract case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P,
                                                                      id: P#Id)
@@ -9,6 +9,8 @@ sealed abstract case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P
   def apply(a: A)(implicit impl: protocol.ClientImpl[F]): F[B] = impl.run(this, a)
 
   def impl(f: A => F[B]): RpcServerImpl[F, A, B, P] = new RpcServerImpl[F, A, B, P](this, f) {}
+
+  private var _implCache: (RpcServerImpls[F, P], RpcServerImpl[F, A, B, P]) = null
 }
 
 object Rpc {
@@ -49,4 +51,20 @@ object Rpc {
 
   sealed abstract case class RpcServerImpl[F[_], A, B, P <: Protocol[P]] private[Rpc](rpc: Rpc[F, A, B, P],
                                                                                       run: A => F[B])
+
+  // TODO: think more about this
+  final case class RpcServerImpls[F[_], P <: Protocol[P]](impls: Seq[RpcServerImpl[F, _, _, P]]) {
+    protected val implMap: Map[P#Id, RpcServerImpl[F, _, _, P]] = impls.map(impl => impl.rpc.id -> impl).toMap
+
+    def apply[A, B](rpc: Rpc[F, A, B, P]): RpcServerImpl[F, A, B, P] = {
+      val implCache = rpc._implCache
+      if (implCache != null && implCache._1 eq this) {
+        implCache._2
+      } else {
+        val impl = implMap(rpc.id).asInstanceOf[RpcServerImpl[F, A, B, P]]
+        rpc._implCache = (this, impl)
+        impl
+      }
+    }
+  }
 }
