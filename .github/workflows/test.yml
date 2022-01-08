@@ -20,4 +20,4 @@ jobs:
           distribution: 'adopt'
           java-version: '17'
       - name: Run tests
-        run: sbt "; test"
+        run: sbt -mem 2048 "; test"
