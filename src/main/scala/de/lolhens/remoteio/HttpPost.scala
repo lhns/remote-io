@@ -23,16 +23,16 @@ object HttpPost extends HttpPost {
     protected implicit def repoId: HttpPostRpcRepoId = HttpPostRpcRepoId(id)
   }
 
-  final case class HttpPostRpcId private(repoId: HttpPostRpcRepoId, id: String) {
+  abstract case class HttpPostRpcId private(repoId: HttpPostRpcRepoId, id: String) {
     def string = s"${repoId.id}/$id"
   }
 
   object HttpPostRpcId {
     implicit def auto(implicit repoId: HttpPostRpcRepoId, name: sourcecode.Name): HttpPostRpcId =
-      HttpPostRpcId(repoId, name.value)
+      new HttpPostRpcId(repoId, name.value) {}
 
     implicit def string2id(id: String)(implicit repoId: HttpPostRpcRepoId): HttpPostRpcId =
-      HttpPostRpcId(repoId, id)
+      new HttpPostRpcId(repoId, id) {}
   }
 
   class HttpPostClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RpcClientImpl[F, HttpPost] {
@@ -46,7 +46,8 @@ object HttpPost extends HttpPost {
     }
   }
 
-  case class HttpPostCodec[F[_], A](decoder: EntityDecoder[F, A], encoder: EntityEncoder[F, A])
+  final case class HttpPostCodec[F[_], A](decoder: EntityDecoder[F, A],
+                                          encoder: EntityEncoder[F, A])
 
   object HttpPostCodec {
     implicit def entityCodec[F[_], A](implicit

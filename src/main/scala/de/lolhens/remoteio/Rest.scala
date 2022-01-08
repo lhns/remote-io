@@ -17,11 +17,11 @@ trait Rest extends Protocol[Rest] {
 }
 
 object Rest extends Rest {
-  final case class RestRpcId private(method: Method, segments: Vector[Uri.Path.Segment])
+  abstract case class RestRpcId private(method: Method, segments: Vector[Uri.Path.Segment])
 
   object RestRpcId {
     implicit def string2id(route: (Method, Uri.Path)): RestRpcId =
-      RestRpcId(route._1, route._2.segments)
+      new RestRpcId(route._1, route._2.segments) {}
   }
 
   class RestClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RpcClientImpl[F, Rest] {
@@ -35,7 +35,8 @@ object Rest extends Rest {
     }
   }
 
-  case class RestCodec[F[_], A](decoder: EntityDecoder[F, A], encoder: EntityEncoder[F, A])
+  final case class RestCodec[F[_], A](decoder: EntityDecoder[F, A],
+                                      encoder: EntityEncoder[F, A])
 
   object RestCodec {
     implicit def entityCodec[F[_], A](implicit
