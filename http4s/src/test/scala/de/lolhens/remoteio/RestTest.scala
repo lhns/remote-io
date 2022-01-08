@@ -9,16 +9,16 @@ import org.http4s.client.Client
 
 class RestTest extends CatsEffectSuite {
   object TestRepo {
-    val hello = Rpc[IO, Unit, String](Rest)(GET -> Path.empty / "api" / "hello")
-    val world = Rpc[IO, String, String](Rest)(POST -> Path.empty / "api" / "world")
+    val rpc1 = Rpc[IO, Unit, String](Rest)(GET -> Path.empty / "api" / "rpc1")
+    val rpc2 = Rpc[IO, String, String](Rest)(POST -> Path.empty / "api" / "rpc2")
   }
 
   val routes = Rest.toRoutes(
-    TestRepo.hello.impl { _ =>
-      IO.pure("hello")
+    TestRepo.rpc1.impl { _ =>
+      IO.pure("rpc1")
     },
-    TestRepo.world.impl { string =>
-      IO.pure(string + " world")
+    TestRepo.rpc2.impl { string =>
+      IO.pure("rpc2: " + string)
     }
   )
 
@@ -28,7 +28,7 @@ class RestTest extends CatsEffectSuite {
       Uri.unsafeFromString("http://localhost:8080")
     )
 
-    TestRepo.hello(()).map { e => println(e) } >>
-      TestRepo.world("b").map { e => println(e) }
+    TestRepo.rpc1(()).map { e => assertEquals(e, "rpc1") } >>
+      TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") }
   }
 }

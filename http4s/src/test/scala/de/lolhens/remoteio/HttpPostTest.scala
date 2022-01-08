@@ -7,16 +7,16 @@ import org.http4s.client.Client
 
 class HttpPostTest extends CatsEffectSuite {
   object TestRepo extends HttpPostRpcRepo("test") {
-    val hello = Rpc[IO, String, String](HttpPost)()
-    val world = Rpc[IO, String, String](HttpPost)()
+    val rpc1 = Rpc[IO, String, String](HttpPost)()
+    val rpc2 = Rpc[IO, String, String](HttpPost)()
   }
 
   val routes = HttpPost.toRoutes(
-    TestRepo.hello.impl { string =>
-      IO.pure("hello " + string)
+    TestRepo.rpc1.impl { string =>
+      IO.pure("rpc1: " + string)
     },
-    TestRepo.world.impl { string =>
-      IO.pure(string + " world")
+    TestRepo.rpc2.impl { string =>
+      IO.pure("rpc2: " + string)
     }
   )
 
@@ -26,7 +26,7 @@ class HttpPostTest extends CatsEffectSuite {
       Uri.unsafeFromString("http://localhost:8080")
     )
 
-    TestRepo.hello("a").map { e => println(e) } >>
-      TestRepo.world("b").map { e => println(e) }
+    TestRepo.rpc1("a").map { e => assertEquals(e, "rpc1: a") } >>
+      TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") }
   }
 }
