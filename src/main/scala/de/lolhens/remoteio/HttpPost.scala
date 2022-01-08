@@ -23,16 +23,14 @@ object HttpPost extends HttpPost {
     protected implicit def repoId: HttpPostRpcRepoId = HttpPostRpcRepoId(id)
   }
 
-  abstract case class HttpPostRpcId private(repoId: HttpPostRpcRepoId, id: String) {
-    def string = s"${repoId.id}/$id"
-  }
+  final case class HttpPostRpcId(repoId: HttpPostRpcRepoId, id: String)
 
   object HttpPostRpcId {
     implicit def auto(implicit repoId: HttpPostRpcRepoId, name: sourcecode.Name): HttpPostRpcId =
-      new HttpPostRpcId(repoId, name.value) {}
+      HttpPostRpcId(repoId, name.value)
 
     implicit def string2id(id: String)(implicit repoId: HttpPostRpcRepoId): HttpPostRpcId =
-      new HttpPostRpcId(repoId, id) {}
+      HttpPostRpcId(repoId, id)
   }
 
   class HttpPostClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RpcClientImpl[F, HttpPost] {
@@ -57,13 +55,15 @@ object HttpPost extends HttpPost {
   }
 
   def toRoutes[F[_] : Sync](impls: RpcServerImpl[F, _, _, HttpPost]*): HttpRoutes[F] = {
+    def path(id: HttpPostRpcId): Uri.Path = Uri.Path.empty / id.repoId.id / id.id
+
     impls.groupBy(_.rpc.id).foreach {
       case (id, impls) =>
         if (impls.size > 1)
-          throw new IllegalArgumentException(s"rpc id must be unique: ${id.string}")
+          throw new IllegalArgumentException(s"rpc id must be unique: ${path(id).renderString}")
     }
 
-    val implMap = impls.map(impl => impl.rpc.id.string -> impl).toMap
+    val implMap = impls.map(impl => path(impl.rpc.id).segments -> impl).toMap
 
     def run[A, B, Id](impl: RpcServerImpl[F, A, B, HttpPost], request: Request[F]): F[Response[F]] = {
       implicit val decoder: EntityDecoder[F, A] = impl.rpc.aCodec.decoder
@@ -78,7 +78,7 @@ object HttpPost extends HttpPost {
     Kleisli { request =>
       for {
         _ <- OptionT.when(request.method == Method.POST)(())
-        impl <- OptionT.fromOption[F](implMap.get(request.pathInfo.renderString.replaceFirst("^/", "")))
+        impl <- OptionT.fromOption[F](implMap.get(request.pathInfo.segments))
         response <- OptionT.liftF(run(impl, request))
       } yield
         response

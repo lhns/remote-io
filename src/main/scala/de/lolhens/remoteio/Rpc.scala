@@ -35,9 +35,6 @@ object Rpc {
 
   def apply[F[_], A, B]: RpcPartiallyApplied[F, A, B] = new RpcPartiallyApplied[F, A, B](())
 
-  sealed abstract case class RpcServerImpl[F[_], A, B, P <: Protocol[P]] private[Rpc](rpc: Rpc[F, A, B, P],
-                                                                                      run: A => F[B])
-
   trait Protocol[P <: Protocol[P]] {
     type Id
 
@@ -49,4 +46,7 @@ object Rpc {
   trait RpcClientImpl[F[_], P <: Protocol[P]] {
     def run[A, B, Id](rpc: Rpc[F, A, B, P], a: A): F[B]
   }
+
+  sealed abstract case class RpcServerImpl[F[_], A, B, P <: Protocol[P]] private[Rpc](rpc: Rpc[F, A, B, P],
+                                                                                      run: A => F[B])
 }
