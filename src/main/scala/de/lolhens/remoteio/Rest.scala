@@ -16,9 +16,7 @@ trait Rest extends Protocol[Rest] {
   override type ClientImpl[F[_]] = RestClientImpl[F]
 }
 
-object Rest {
-  implicit val instance: Rest = new Rest {}
-
+object Rest extends Rest {
   final case class RestRpcId private(method: Method, segments: Vector[Uri.Path.Segment])
 
   object RestRpcId {

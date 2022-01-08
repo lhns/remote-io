@@ -16,9 +16,7 @@ trait HttpPost extends Protocol[HttpPost] {
   override type ClientImpl[F[_]] = HttpPostClientImpl[F]
 }
 
-object HttpPost {
-  implicit val instance: HttpPost = new HttpPost {}
-
+object HttpPost extends HttpPost {
   final case class HttpPostRpcRepoId(id: String)
 
   abstract class HttpPostRpcRepo(id: String) {

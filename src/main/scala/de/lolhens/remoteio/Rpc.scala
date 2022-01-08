@@ -12,21 +12,39 @@ final case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P,
 }
 
 object Rpc {
-  def apply[F[_], A, B, P <: Protocol[P]](id: P#Id)
-                                         (implicit
-                                          protocol: P,
-                                          aCodec: P#Codec[F, A],
-                                          bCodec: P#Codec[F, B]): Rpc[F, A, B, P] =
-    new Rpc[F, A, B, P](protocol, id)(aCodec, bCodec)
+  trait RpcPartiallyApplied2[F[_], A, B, P <: Protocol[P]] {
+    def apply(id: P#Id)
+             (implicit
+              aCodec: P#Codec[F, A],
+              bCodec: P#Codec[F, B]): Rpc[F, A, B, P]
 
-  def apply[F[_], A, B, P <: Protocol[P]]()
-                                         (implicit
-                                          id: P#Id,
-                                          protocol: P,
-                                          aCodec: P#Codec[F, A],
-                                          bCodec: P#Codec[F, B],
-                                          dummyImplicit: DummyImplicit): Rpc[F, A, B, P] =
-    new Rpc[F, A, B, P](protocol, id)(aCodec, bCodec)
+    def apply()
+             (implicit
+              id: P#Id,
+              aCodec: P#Codec[F, A],
+              bCodec: P#Codec[F, B],
+              dummyImplicit: DummyImplicit): Rpc[F, A, B, P]
+  }
+
+  trait RpcPartiallyApplied[F[_], A, B] {
+    def apply[P <: Protocol[P]](protocol: Protocol[P]): RpcPartiallyApplied2[F, A, B, P] = new RpcPartiallyApplied2[F, A, B, P] {
+      override def apply(id: P#Id)
+                        (implicit
+                         aCodec: P#Codec[F, A],
+                         bCodec: P#Codec[F, B]): Rpc[F, A, B, P] =
+        new Rpc[F, A, B, P](protocol.asInstanceOf[P], id)(aCodec, bCodec)
+
+      override def apply()
+                        (implicit
+                         id: P#Id,
+                         aCodec: P#Codec[F, A],
+                         bCodec: P#Codec[F, B],
+                         dummyImplicit: DummyImplicit): Rpc[F, A, B, P] =
+        new Rpc[F, A, B, P](protocol.asInstanceOf[P], id)(aCodec, bCodec)
+    }
+  }
+
+  def apply[F[_], A, B]: RpcPartiallyApplied[F, A, B] = new RpcPartiallyApplied[F, A, B] {}
 
   trait Protocol[P <: Protocol[P]] {
     type Id

@@ -10,8 +10,8 @@ import org.http4s.jdkhttpclient.JdkHttpClient
 import org.http4s.server.Router
 
 object RestTest {
-  val hello = Rpc[IO, Unit, String, Rest](GET -> Path.empty / "api" / "hello")
-  val world = Rpc[IO, String, String, Rest](POST -> Path.empty / "api" / "world")
+  val hello = Rpc[IO, Unit, String](Rest)(GET -> Path.empty / "api" / "hello")
+  val world = Rpc[IO, String, String](Rest)(POST -> Path.empty / "api" / "world")
 
   val routes = Rest.toRoutes(
     hello.impl { _ =>
