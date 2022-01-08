@@ -4,7 +4,6 @@ import cats.effect.IO
 import de.lolhens.remoteio.HttpPost.{HttpPostClientImpl, HttpPostRpcRepo}
 import org.http4s.Uri
 import org.http4s.client.Client
-import org.http4s.server.Router
 
 class HttpPostTest extends CatsEffectSuite {
   object TestRepo extends HttpPostRpcRepo("test") {

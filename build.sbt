@@ -26,8 +26,8 @@ lazy val commonSettings: SettingsDefinition = Def.settings(
 
   libraryDependencies ++= Seq(
     "ch.qos.logback" % "logback-classic" % "1.2.8" % Test,
-    "de.lolhens" %% "munit-tagless-final" % "0.2.0" % Test,
-    "org.scalameta" %% "munit" % "0.7.29" % Test,
+    "de.lolhens" %%% "munit-tagless-final" % "0.2.0" % Test,
+    "org.scalameta" %%% "munit" % "0.7.29" % Test,
   ),
 
   testFrameworks += new TestFramework("munit.Framework"),
@@ -57,9 +57,9 @@ lazy val commonSettings: SettingsDefinition = Def.settings(
 name := (core.projectRefs.head / name).value
 
 val V = new {
-  val cats = "2.7.0"
   val catsEffect = "3.2.0"
   val http4s = "0.23.7"
+  val sourcecode = "0.2.7"
 }
 
 lazy val root: Project =
@@ -71,21 +71,27 @@ lazy val root: Project =
       publish / skip := true
     )
     .aggregate(core.projectRefs: _*)
+    .aggregate(http4s.projectRefs: _*)
 
 lazy val core = projectMatrix.in(file("core"))
   .settings(commonSettings)
   .settings(
-    name := "remote-io",
+    name := "remote-io-core",
+  )
+  .jvmPlatform(scalaVersions)
+  .jsPlatform(scalaVersions)
+
+lazy val http4s = projectMatrix.in(file("http4s"))
+  .dependsOn(core)
+  .settings(commonSettings)
+  .settings(
+    name := "remote-io-http4s",
 
     libraryDependencies ++= Seq(
-      "org.typelevel" %% "cats-core" % V.cats,
-      "org.typelevel" %% "cats-effect" % V.catsEffect,
-      "org.http4s" %% "http4s-server" % V.http4s,
-      "org.http4s" %% "http4s-client" % V.http4s,
-      "org.http4s" %% "http4s-jdk-http-client" % "0.5.0",
-      "org.http4s" %% "http4s-blaze-server" % V.http4s,
-      "com.lihaoyi" %% "sourcecode" % "0.2.7",
+      "org.typelevel" %%% "cats-effect" % V.catsEffect,
+      "org.http4s" %%% "http4s-client" % V.http4s,
+      "com.lihaoyi" %%% "sourcecode" % V.sourcecode,
     ),
   )
   .jvmPlatform(scalaVersions)
-  //.jsPlatform(scalaVersions)
+  .jsPlatform(scalaVersions)

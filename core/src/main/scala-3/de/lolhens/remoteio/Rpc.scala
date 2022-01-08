@@ -12,7 +12,7 @@ final case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P)
 
   private val eqObj = (protocol, id)
 
-  override def equals(obj: Any): Boolean = obj match {
+  override def equals(obj: Any): Boolean = (obj: @unchecked) match {
     case rpc: Rpc[F, A, B, P] => rpc.eqObj == eqObj
     case _ => false
   }
