@@ -21,7 +21,7 @@ class HttpPostTest extends CatsEffectSuite {
   )
 
   test("server and client") {
-    implicit val rpcClient = HttpPostClientImpl[IO](
+    implicit val rpcClient: HttpPostClientImpl[IO] = HttpPostClientImpl[IO](
       Client.fromHttpApp(routes.orNotFound),
       Uri.unsafeFromString("http://localhost:8080")
     )
