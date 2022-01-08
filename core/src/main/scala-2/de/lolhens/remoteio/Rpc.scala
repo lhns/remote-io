@@ -58,7 +58,7 @@ object Rpc {
 
     def apply[A, B](rpc: Rpc[F, A, B, P]): RpcServerImpl[F, A, B, P] = {
       val implCache = rpc._implCache
-      if (implCache != null && implCache._1 eq this) {
+      if (implCache != null && (implCache._1 eq this)) {
         implCache._2
       } else {
         val impl = implMap(rpc.id).asInstanceOf[RpcServerImpl[F, A, B, P]]
