@@ -9,8 +9,8 @@ import org.http4s.server.Router
 
 object HttpPostTest {
   object TestRepo extends HttpPostRpcRepo("test") {
-    val hello = Rpc[IO, String, String, HttpPost]()
-    val world = Rpc[IO, String, String, HttpPost]()
+    val hello = Rpc[IO, String, String](HttpPost)()
+    val world = Rpc[IO, String, String](HttpPost)()
   }
 
   val routes = HttpPost.toRoutes(

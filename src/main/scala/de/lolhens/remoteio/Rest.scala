@@ -16,10 +16,8 @@ trait Rest extends Protocol[Rest] {
   override type ClientImpl[F[_]] = RestClientImpl[F]
 }
 
-object Rest {
-  implicit val instance: Rest = new Rest {}
-
-  final case class RestRpcId private(method: Method, segments: Vector[Uri.Path.Segment])
+object Rest extends Rest {
+  final case class RestRpcId(method: Method, segments: Vector[Uri.Path.Segment])
 
   object RestRpcId {
     implicit def string2id(route: (Method, Uri.Path)): RestRpcId =
@@ -37,7 +35,8 @@ object Rest {
     }
   }
 
-  case class RestCodec[F[_], A](decoder: EntityDecoder[F, A], encoder: EntityEncoder[F, A])
+  final case class RestCodec[F[_], A](decoder: EntityDecoder[F, A],
+                                      encoder: EntityEncoder[F, A])
 
   object RestCodec {
     implicit def entityCodec[F[_], A](implicit
