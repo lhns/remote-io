@@ -1,6 +1,6 @@
 package de.lolhens.remoteio
 
-import cats.data.{Kleisli, OptionT}
+import cats.data.OptionT
 import cats.effect.kernel.Sync
 import cats.syntax.all._
 import de.lolhens.remoteio.Rest.{RestClientImpl, RestCodec, RestRpcId}
@@ -24,7 +24,7 @@ object Rest extends Rest {
       RestRpcId(route._1, route._2.segments)
   }
 
-  class RestClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RpcClientImpl[F, Rest] {
+  case class RestClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RpcClientImpl[F, Rest] {
     override def run[A, B, Id](rpc: Rpc[F, A, B, Rest], a: A): F[B] = {
       implicit val encoder: EntityEncoder[F, A] = rpc.aCodec.encoder
       implicit val decoder: EntityDecoder[F, B] = rpc.bCodec.decoder
@@ -52,7 +52,8 @@ object Rest extends Rest {
           throw new IllegalArgumentException(s"rpc id must be unique: ${id.method} ${Uri.Path(id.segments)}")
     }
 
-    val implMap = impls.map(impl => (impl.rpc.id.method, impl.rpc.id.segments) -> impl).toMap
+    val implMap: Map[(Method, Vector[Uri.Path.Segment]), RpcServerImpl[F, _, _, Rest]] =
+      impls.map(impl => (impl.rpc.id.method, impl.rpc.id.segments) -> impl).toMap
 
     def run[A, B, Id](impl: RpcServerImpl[F, A, B, Rest], request: Request[F]): F[Response[F]] = {
       implicit val decoder: EntityDecoder[F, A] = impl.rpc.aCodec.decoder
@@ -64,7 +65,7 @@ object Rest extends Rest {
         Response(Status.Ok).withEntity(b)
     }
 
-    Kleisli { request =>
+    HttpRoutes[F] { request =>
       for {
         impl <- OptionT.fromOption[F](implMap.get((request.method, request.pathInfo.segments)))
         response <- OptionT.liftF(run(impl, request))

@@ -1,6 +1,6 @@
 package de.lolhens.remoteio
 
-import cats.data.{Kleisli, OptionT}
+import cats.data.OptionT
 import cats.effect.kernel.Sync
 import cats.syntax.all._
 import de.lolhens.remoteio.HttpPost.{HttpPostClientImpl, HttpPostCodec, HttpPostRpcId}
@@ -33,7 +33,7 @@ object HttpPost extends HttpPost {
       HttpPostRpcId(repoId, id)
   }
 
-  class HttpPostClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RpcClientImpl[F, HttpPost] {
+  case class HttpPostClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RpcClientImpl[F, HttpPost] {
     override def run[A, B, Id](rpc: Rpc[F, A, B, HttpPost], a: A): F[B] = {
       implicit val encoder: EntityEncoder[F, A] = rpc.aCodec.encoder
       implicit val decoder: EntityDecoder[F, B] = rpc.bCodec.decoder
@@ -63,7 +63,8 @@ object HttpPost extends HttpPost {
           throw new IllegalArgumentException(s"rpc id must be unique: ${path(id).renderString}")
     }
 
-    val implMap = impls.map(impl => path(impl.rpc.id).segments -> impl).toMap
+    val implMap: Map[Vector[Uri.Path.Segment], RpcServerImpl[F, _, _, HttpPost]] =
+      impls.map(impl => path(impl.rpc.id).segments -> impl).toMap
 
     def run[A, B, Id](impl: RpcServerImpl[F, A, B, HttpPost], request: Request[F]): F[Response[F]] = {
       implicit val decoder: EntityDecoder[F, A] = impl.rpc.aCodec.decoder
@@ -75,7 +76,7 @@ object HttpPost extends HttpPost {
         Response(Status.Ok).withEntity(b)
     }
 
-    Kleisli { request =>
+    HttpRoutes[F] { request =>
       for {
         _ <- OptionT.when(request.method == Method.POST)(())
         impl <- OptionT.fromOption[F](implMap.get(request.pathInfo.segments))
