@@ -12,8 +12,6 @@ trait Rest extends Protocol[Rest] {
   override type Id = RestRpcId
 
   override type Codec[F[_], A] = RestCodec[F, A]
-
-  override type ClientImpl[F[_]] = RestClientImpl[F]
 }
 
 object Rest extends Rest {

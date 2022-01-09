@@ -12,8 +12,6 @@ trait HttpPost extends Protocol[HttpPost] {
   override type Id = HttpPostRpcId
 
   override type Codec[F[_], A] = HttpPostCodec[F, A]
-
-  override type ClientImpl[F[_]] = HttpPostClientImpl[F]
 }
 
 object HttpPost extends HttpPost {

@@ -1,12 +1,12 @@
 package de.lolhens.remoteio
 
-import de.lolhens.remoteio.Rpc.{Protocol, RpcServerImpl, RpcServerImpls}
+import de.lolhens.remoteio.Rpc.{Protocol, RpcClientImpl, RpcServerImpl, RpcServerImpls}
 
 sealed abstract case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P,
                                                                      id: P#Id)
                                                                     (val aCodec: P#Codec[F, A],
                                                                      val bCodec: P#Codec[F, B]) {
-  def apply(a: A)(implicit impl: protocol.ClientImpl[F]): F[B] = impl.run(this, a)
+  def apply(a: A)(implicit impl: RpcClientImpl[F, P]): F[B] = impl.run(this, a)
 
   def impl(f: A => F[B]): RpcServerImpl[F, A, B, P] = new RpcServerImpl[F, A, B, P](this, f) {}
 
@@ -41,8 +41,6 @@ object Rpc {
     type Id
 
     type Codec[F[_], A]
-
-    type ClientImpl[F[_]] <: RpcClientImpl[F, P]
   }
 
   trait RpcClientImpl[F[_], P <: Protocol[P]] {
@@ -65,6 +63,10 @@ object Rpc {
         rpc._implCache = (this, impl)
         impl
       }
+    }
+
+    def clientImpl: RpcClientImpl[F, P] = new RpcClientImpl[F, P] {
+      override def run[A, B, Id](rpc: Rpc[F, A, B, P], a: A): F[B] = apply(rpc).run(a)
     }
   }
 }
