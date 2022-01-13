@@ -14,20 +14,27 @@ class RestTest extends CatsEffectSuite {
     val rpc2: Rpc[IO, String, String, Rest] = Rpc[IO, String, String](Rest)(POST -> Path.empty / "api" / "rpc2")
   }
 
-  val routes = RpcRoutes(
+  val rpcRoutes = RpcRoutes(
     TestRepo.rpc1.impl { _ =>
       IO.pure("rpc1")
     },
     TestRepo.rpc2.impl { string =>
       IO.pure("rpc2: " + string)
     }
-  ).toRoutes
+  )
 
   test("client and server") {
-    implicit val rpcClient: RemoteRpcImpl[IO, Rest] = RestRpcImpl[IO](
-      Client.fromHttpApp(routes.orNotFound),
+    implicit val remoteRpcImpl: RemoteRpcImpl[IO, Rest] = RestRpcImpl[IO](
+      Client.fromHttpApp(rpcRoutes.toRoutes.orNotFound),
       Uri.unsafeFromString("http://localhost:8080")
     )
+
+    TestRepo.rpc1(()).map { e => assertEquals(e, "rpc1") } >>
+      TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") }
+  }
+
+  test("local impl") {
+    implicit val remoteRpcImpl: RemoteRpcImpl[IO, Rest] = rpcRoutes.localImpl
 
     TestRepo.rpc1(()).map { e => assertEquals(e, "rpc1") } >>
       TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") }
