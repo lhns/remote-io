@@ -2,23 +2,24 @@ package de.lolhens.remoteio
 
 import cats.effect.IO
 import de.lolhens.remoteio.HttpPost.{HttpPostClientImpl, HttpPostRpcRepo}
+import de.lolhens.remoteio.Rpc.RpcRoutes
 import org.http4s.Uri
 import org.http4s.client.Client
 
 class HttpPostTest extends CatsEffectSuite {
   object TestRepo extends HttpPostRpcRepo("test") {
-    val rpc1 = Rpc[IO, String, String](HttpPost)()
-    val rpc2 = Rpc[IO, String, String](HttpPost)()
+    val rpc1: Rpc[IO, String, String, HttpPost] = Rpc[IO, String, String](HttpPost)()
+    val rpc2: Rpc[IO, String, String, HttpPost] = Rpc[IO, String, String](HttpPost)()
   }
 
-  val routes = HttpPost.toRoutes(
+  val routes = RpcRoutes(
     TestRepo.rpc1.impl { string =>
       IO.pure("rpc1: " + string)
     },
     TestRepo.rpc2.impl { string =>
       IO.pure("rpc2: " + string)
     }
-  )
+  ).toRoutes
 
   test("server and client") {
     implicit val rpcClient: HttpPostClientImpl[IO] = HttpPostClientImpl[IO](

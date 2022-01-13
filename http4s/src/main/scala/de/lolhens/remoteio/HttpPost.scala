@@ -1,10 +1,11 @@
 package de.lolhens.remoteio
 
 import cats.data.OptionT
+import cats.effect.Concurrent
 import cats.effect.kernel.Sync
 import cats.syntax.all._
-import de.lolhens.remoteio.HttpPost.{HttpPostClientImpl, HttpPostCodec, HttpPostRpcId}
-import de.lolhens.remoteio.Rpc.{Protocol, RpcClientImpl, RpcServerImpl}
+import de.lolhens.remoteio.HttpPost.{HttpPostCodec, HttpPostRpcId}
+import de.lolhens.remoteio.Rpc.{LocalRpcImpl, Protocol, RemoteRpcImpl, RpcRoutes}
 import org.http4s.client.Client
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Request, Response, Status, Uri}
 
@@ -31,7 +32,7 @@ object HttpPost extends HttpPost {
       HttpPostRpcId(repoId, id)
   }
 
-  case class HttpPostClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RpcClientImpl[F, HttpPost] {
+  case class HttpPostClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RemoteRpcImpl[F, HttpPost] {
     override def run[A, B, Id](rpc: Rpc[F, A, B, HttpPost], a: A): F[B] = {
       implicit val encoder: EntityEncoder[F, A] = rpc.aCodec.encoder
       implicit val decoder: EntityDecoder[F, B] = rpc.bCodec.decoder
@@ -45,42 +46,43 @@ object HttpPost extends HttpPost {
   final case class HttpPostCodec[F[_], A](decoder: EntityDecoder[F, A],
                                           encoder: EntityEncoder[F, A])
 
-  object HttpPostCodec {
+  object HttpPostCodec extends HttpPostCodecLowPrioImplicits {
+    implicit def unitEntityCodec[F[_] : Concurrent]: HttpPostCodec[F, Unit] =
+      HttpPostCodec(EntityDecoder.void, EntityEncoder.unitEncoder)
+  }
+
+  trait HttpPostCodecLowPrioImplicits {
     implicit def entityCodec[F[_], A](implicit
                                       decoder: EntityDecoder[F, A],
                                       encoder: EntityEncoder[F, A]): HttpPostCodec[F, A] =
       HttpPostCodec(decoder, encoder)
   }
 
-  def toRoutes[F[_] : Sync](impls: RpcServerImpl[F, _, _, HttpPost]*): HttpRoutes[F] = {
-    def path(id: HttpPostRpcId): Uri.Path = Uri.Path.empty / id.repoId.id / id.id
+  implicit class RpcRoutesHttpPostOps[F[_]](routes: RpcRoutes[F, HttpPost]) {
+    def toRoutes(implicit F: Sync[F]): HttpRoutes[F] = {
+      def path(id: HttpPostRpcId): Uri.Path = Uri.Path.empty / id.repoId.id / id.id
 
-    impls.groupBy(_.rpc.id).foreach {
-      case (id, impls) =>
-        if (impls.size > 1)
-          throw new IllegalArgumentException(s"rpc id must be unique: ${path(id).renderString}")
-    }
+      val implMap: Map[Vector[Uri.Path.Segment], LocalRpcImpl[F, _, _, HttpPost]] =
+        routes.impls.map(impl => path(impl.rpc.id).segments -> impl).toMap
 
-    val implMap: Map[Vector[Uri.Path.Segment], RpcServerImpl[F, _, _, HttpPost]] =
-      impls.map(impl => path(impl.rpc.id).segments -> impl).toMap
+      def run[A, B, Id](impl: LocalRpcImpl[F, A, B, HttpPost], request: Request[F]): F[Response[F]] = {
+        implicit val decoder: EntityDecoder[F, A] = impl.rpc.aCodec.decoder
+        implicit val encoder: EntityEncoder[F, B] = impl.rpc.bCodec.encoder
+        for {
+          a <- request.as[A]
+          b <- impl.run(a)
+        } yield
+          Response(Status.Ok).withEntity(b)
+      }
 
-    def run[A, B, Id](impl: RpcServerImpl[F, A, B, HttpPost], request: Request[F]): F[Response[F]] = {
-      implicit val decoder: EntityDecoder[F, A] = impl.rpc.aCodec.decoder
-      implicit val encoder: EntityEncoder[F, B] = impl.rpc.bCodec.encoder
-      for {
-        a <- request.as[A]
-        b <- impl.run(a)
-      } yield
-        Response(Status.Ok).withEntity(b)
-    }
-
-    HttpRoutes[F] { request =>
-      for {
-        _ <- OptionT.when(request.method == Method.POST)(())
-        impl <- OptionT.fromOption[F](implMap.get(request.pathInfo.segments))
-        response <- OptionT.liftF(run(impl, request))
-      } yield
-        response
+      HttpRoutes[F] { request =>
+        for {
+          _ <- OptionT.when(request.method == Method.POST)(())
+          impl <- OptionT.fromOption[F](implMap.get(request.pathInfo.segments))
+          response <- OptionT.liftF(run(impl, request))
+        } yield
+          response
+      }
     }
   }
 }
