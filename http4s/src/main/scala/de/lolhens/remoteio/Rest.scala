@@ -22,7 +22,7 @@ object Rest extends Rest {
       RestRpcId(route._1, route._2.segments)
   }
 
-  case class RestClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RemoteRpcImpl[F, Rest] {
+  case class RestRpcImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RemoteRpcImpl[F, Rest] {
     override def run[A, B, Id](rpc: Rpc[F, A, B, Rest], a: A): F[B] = {
       implicit val encoder: EntityEncoder[F, A] = rpc.aCodec.encoder
       implicit val decoder: EntityDecoder[F, B] = rpc.bCodec.decoder

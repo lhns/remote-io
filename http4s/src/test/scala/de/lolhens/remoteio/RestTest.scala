@@ -1,8 +1,8 @@
 package de.lolhens.remoteio
 
 import cats.effect.IO
-import de.lolhens.remoteio.Rest.RestClientImpl
-import de.lolhens.remoteio.Rpc.RpcRoutes
+import de.lolhens.remoteio.Rest.RestRpcImpl
+import de.lolhens.remoteio.Rpc.{RemoteRpcImpl, RpcRoutes}
 import org.http4s.Method.{GET, POST}
 import org.http4s.Uri
 import org.http4s.Uri.Path
@@ -24,7 +24,7 @@ class RestTest extends CatsEffectSuite {
   ).toRoutes
 
   test("client and server") {
-    implicit val rpcClient: RestClientImpl[IO] = RestClientImpl[IO](
+    implicit val rpcClient: RemoteRpcImpl[IO, Rest] = RestRpcImpl[IO](
       Client.fromHttpApp(routes.orNotFound),
       Uri.unsafeFromString("http://localhost:8080")
     )

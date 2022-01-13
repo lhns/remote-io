@@ -32,7 +32,7 @@ object HttpPost extends HttpPost {
       HttpPostRpcId(repoId, id)
   }
 
-  case class HttpPostClientImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RemoteRpcImpl[F, HttpPost] {
+  case class HttpPostRpcImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RemoteRpcImpl[F, HttpPost] {
     override def run[A, B, Id](rpc: Rpc[F, A, B, HttpPost], a: A): F[B] = {
       implicit val encoder: EntityEncoder[F, A] = rpc.aCodec.encoder
       implicit val decoder: EntityDecoder[F, B] = rpc.bCodec.decoder
