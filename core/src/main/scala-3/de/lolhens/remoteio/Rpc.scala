@@ -3,14 +3,14 @@ package de.lolhens.remoteio
 import de.lolhens.remoteio.Rpc.{LocalRpcImpl, Protocol, RemoteRpcImpl, RpcRoutes}
 
 final case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P)
-                                                          (val id: protocol.Id)
+                                                          (val args: protocol.Args)
                                                           (val aCodec: protocol.Codec[F, A],
                                                            val bCodec: protocol.Codec[F, B]) {
   def apply(a: A)(implicit impl: RemoteRpcImpl[F, P]): F[B] = impl.run(this, a)
 
   def impl(f: A => F[B]): LocalRpcImpl[F, A, B, P] = new LocalRpcImpl[F, A, B, P](this, f) {}
 
-  private val eqObj = (protocol, id)
+  private val eqObj = (protocol, args)
 
   override def equals(obj: Any): Boolean = obj match {
     case rpc: Rpc[F, A, B, P]@unchecked => rpc.eqObj == eqObj
@@ -25,42 +25,42 @@ final case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P)
 object Rpc {
   final class RpcPartiallyApplied[F[_], A, B] private[Rpc](val unit: Unit) extends AnyVal {
     def apply[P <: Protocol[P]](protocol: P)
-                               (id: protocol.Id)
+                               (args: protocol.Args)
                                (implicit
                                 aCodec: protocol.Codec[F, A],
                                 bCodec: protocol.Codec[F, B]): Rpc[F, A, B, P] =
-      new Rpc[F, A, B, P](protocol)(id)(aCodec, bCodec)
+      new Rpc[F, A, B, P](protocol)(args)(aCodec, bCodec)
 
     def apply[P <: Protocol[P]](protocol: P)
                                ()
                                (implicit
-                                id: protocol.Id,
+                                args: protocol.Args,
                                 aCodec: protocol.Codec[F, A],
                                 bCodec: protocol.Codec[F, B],
                                 dummyImplicit: DummyImplicit): Rpc[F, A, B, P] =
-      new Rpc[F, A, B, P](protocol)(id)(aCodec, bCodec)
+      new Rpc[F, A, B, P](protocol)(args)(aCodec, bCodec)
   }
 
   def apply[F[_], A, B]: RpcPartiallyApplied[F, A, B] = new RpcPartiallyApplied[F, A, B](())
 
   trait Protocol[P <: Protocol[P]] {
-    type Id
+    type Args
 
     type Codec[F[_], A]
   }
 
   trait RemoteRpcImpl[F[_], P <: Protocol[P]] {
-    def run[A, B, Id](rpc: Rpc[F, A, B, P], a: A): F[B]
+    def run[A, B, Args](rpc: Rpc[F, A, B, P], a: A): F[B]
   }
 
   sealed abstract case class LocalRpcImpl[F[_], A, B, P <: Protocol[P]] private[Rpc](rpc: Rpc[F, A, B, P],
                                                                                      run: A => F[B])
 
   final case class RpcRoutes[F[_], P <: Protocol[P]](impls: LocalRpcImpl[F, _, _, P]*) {
-    impls.groupBy(_.rpc.id).foreach {
-      case (id, impls) =>
+    impls.groupBy(_.rpc).foreach {
+      case (rpc, impls) =>
         if (impls.size > 1)
-          throw new IllegalArgumentException(s"rpc id must be unique: $id")
+          throw new IllegalArgumentException(s"rpc must be unique: $rpc")
     }
 
     protected val implMap: Map[Rpc[F, _, _, P], LocalRpcImpl[F, _, _, P]] = impls.map(impl => impl.rpc -> impl).toMap
@@ -77,7 +77,7 @@ object Rpc {
     }
 
     lazy val localImpl: RemoteRpcImpl[F, P] = new RemoteRpcImpl[F, P] {
-      override def run[A, B, Id](rpc: Rpc[F, A, B, P], a: A): F[B] = apply(rpc).run(a)
+      override def run[A, B, Args](rpc: Rpc[F, A, B, P], a: A): F[B] = apply(rpc).run(a)
     }
   }
 }

@@ -4,13 +4,13 @@ import cats.data.OptionT
 import cats.effect.Concurrent
 import cats.effect.kernel.Sync
 import cats.syntax.all._
-import de.lolhens.remoteio.HttpPost.{HttpPostCodec, HttpPostRpcId}
+import de.lolhens.remoteio.HttpPost.{HttpPostArgs, HttpPostCodec}
 import de.lolhens.remoteio.Rpc.{LocalRpcImpl, Protocol, RemoteRpcImpl, RpcRoutes}
 import org.http4s.client.Client
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Request, Response, Status, Uri}
 
 trait HttpPost extends Protocol[HttpPost] {
-  override type Id = HttpPostRpcId
+  override type Args = HttpPostArgs
 
   override type Codec[F[_], A] = HttpPostCodec[F, A]
 }
@@ -22,23 +22,23 @@ object HttpPost extends HttpPost {
     protected implicit def repoId: HttpPostRpcRepoId = HttpPostRpcRepoId(id)
   }
 
-  final case class HttpPostRpcId(repoId: HttpPostRpcRepoId, id: String)
+  final case class HttpPostArgs(repoId: HttpPostRpcRepoId, id: String)
 
-  object HttpPostRpcId {
-    implicit def auto(implicit repoId: HttpPostRpcRepoId, name: sourcecode.Name): HttpPostRpcId =
-      HttpPostRpcId(repoId, name.value)
+  object HttpPostArgs {
+    implicit def auto(implicit repoId: HttpPostRpcRepoId, name: sourcecode.Name): HttpPostArgs =
+      HttpPostArgs(repoId, name.value)
 
-    implicit def string2id(id: String)(implicit repoId: HttpPostRpcRepoId): HttpPostRpcId =
-      HttpPostRpcId(repoId, id)
+    implicit def stringArgs(id: String)(implicit repoId: HttpPostRpcRepoId): HttpPostArgs =
+      HttpPostArgs(repoId, id)
   }
 
   case class HttpPostRpcImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RemoteRpcImpl[F, HttpPost] {
-    override def run[A, B, Id](rpc: Rpc[F, A, B, HttpPost], a: A): F[B] = {
+    override def run[A, B, Args](rpc: Rpc[F, A, B, HttpPost], a: A): F[B] = {
       implicit val encoder: EntityEncoder[F, A] = rpc.aCodec.encoder
       implicit val decoder: EntityDecoder[F, B] = rpc.bCodec.decoder
       client.expect[B](Request[F](
         method = Method.POST,
-        uri = uri / rpc.id.repoId.id / rpc.id.id
+        uri = uri / rpc.args.repoId.id / rpc.args.id
       ).withEntity(a))
     }
   }
@@ -60,12 +60,12 @@ object HttpPost extends HttpPost {
 
   implicit class RpcRoutesHttpPostOps[F[_]](routes: RpcRoutes[F, HttpPost]) {
     def toRoutes(implicit F: Sync[F]): HttpRoutes[F] = {
-      def path(id: HttpPostRpcId): Uri.Path = Uri.Path.empty / id.repoId.id / id.id
+      def path(args: HttpPostArgs): Uri.Path = Uri.Path.empty / args.repoId.id / args.id
 
       val implMap: Map[Vector[Uri.Path.Segment], LocalRpcImpl[F, _, _, HttpPost]] =
-        routes.impls.map(impl => path(impl.rpc.id).segments -> impl).toMap
+        routes.impls.map(impl => path(impl.rpc.args).segments -> impl).toMap
 
-      def run[A, B, Id](impl: LocalRpcImpl[F, A, B, HttpPost], request: Request[F]): F[Response[F]] = {
+      def run[A, B](impl: LocalRpcImpl[F, A, B, HttpPost], request: Request[F]): F[Response[F]] = {
         implicit val decoder: EntityDecoder[F, A] = impl.rpc.aCodec.decoder
         implicit val encoder: EntityEncoder[F, B] = impl.rpc.bCodec.encoder
         for {
