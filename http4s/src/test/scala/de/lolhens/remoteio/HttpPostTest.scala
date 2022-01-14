@@ -5,11 +5,18 @@ import de.lolhens.remoteio.HttpPost.{HttpPostRpcImpl, HttpPostRpcRepo}
 import de.lolhens.remoteio.Rpc.{RemoteRpcImpl, RpcRoutes}
 import org.http4s.Uri
 import org.http4s.client.Client
+import Biinvariant.syntax._
+
+import java.nio.charset.StandardCharsets
 
 class HttpPostTest extends CatsEffectSuite {
+  private def s2b(string: String): Array[Byte] = string.getBytes(StandardCharsets.UTF_8)
+  private def b2s(bytes: Array[Byte]): String = new String(bytes, StandardCharsets.UTF_8)
+
   object TestRepo extends HttpPostRpcRepo("test") {
     val rpc1: Rpc[IO, String, String, HttpPost] = Rpc[IO, String, String](HttpPost)()
     val rpc2: Rpc[IO, String, String, HttpPost] = Rpc[IO, String, String](HttpPost)()
+    val rpc2Bin: MappedRpc[IO, Array[Byte], Array[Byte], HttpPost] = Rpc.biinvariant[IO, HttpPost].biimap(rpc2)(s2b)(b2s)(s2b)(b2s)
   }
 
   val rpcRoutes = RpcRoutes(
@@ -28,13 +35,15 @@ class HttpPostTest extends CatsEffectSuite {
     )
 
     TestRepo.rpc1("a").map { e => assertEquals(e, "rpc1: a") } >>
-      TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") }
+      TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") } >>
+      TestRepo.rpc2Bin(s2b("b-bin")).map { e => assertEquals(b2s(e), "rpc2: b-bin")}
   }
 
   test("local impl") {
     implicit val remoteRpcImpl: RemoteRpcImpl[IO, HttpPost] = rpcRoutes.localImpl
 
     TestRepo.rpc1("a").map { e => assertEquals(e, "rpc1: a") } >>
-      TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") }
+      TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") } >>
+      TestRepo.rpc2Bin(s2b("b-bin")).map { e => assertEquals(b2s(e), "rpc2: b-bin")}
   }
 }
