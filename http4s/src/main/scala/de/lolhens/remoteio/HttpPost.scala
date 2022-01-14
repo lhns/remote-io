@@ -1,5 +1,6 @@
 package de.lolhens.remoteio
 
+import cats.{Functor, Invariant}
 import cats.data.OptionT
 import cats.effect.Concurrent
 import cats.effect.kernel.Sync
@@ -10,9 +11,27 @@ import org.http4s.client.Client
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Request, Response, Status, Uri}
 
 trait HttpPost extends Protocol[HttpPost] {
-  override type Args = HttpPostArgs
+  override type Args[F[_], A, B] = HttpPostArgs
 
   override type Codec[F[_], A] = HttpPostCodec[F, A]
+
+  override def argsBiinvariant[F[_] : Functor]: Rpc.BiinvariantF[F, Args] = {
+    type ArgsF[A, B] = Args[F, A, B]
+    new Biinvariant[ArgsF] {
+      override def biimap[A, B, C, D](fab: ArgsF[A, B])(fa: A => C)(ga: C => A)(fb: B => D)(gb: D => B): ArgsF[C, D] =
+        fab
+    }
+  }
+
+  override def codecInvariant[F[_]: Functor]: Rpc.InvariantF[F, Codec] = {
+    type CodecF[A] = Codec[F, A]
+    new Invariant[CodecF] {
+      override def imap[A, B](fa: CodecF[A])(f: A => B)(g: B => A): CodecF[B] = fa.copy(
+        decoder = fa.decoder.map(f),
+        encoder = fa.encoder.contramap(g)
+      )
+    }
+  }
 }
 
 object HttpPost extends HttpPost {

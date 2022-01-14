@@ -1,5 +1,6 @@
 package de.lolhens.remoteio
 
+import cats.{Functor, Inject, Invariant}
 import cats.data.OptionT
 import cats.effect.kernel.{Concurrent, Sync}
 import cats.syntax.all._
@@ -9,18 +10,52 @@ import org.http4s.client.Client
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Request, Response, Status, Uri}
 
 trait Rest extends Protocol[Rest] {
-  override type Args = RestArgs
+  override type Args[F[_], A, B] = RestArgs[A, B, _]
 
   override type Codec[F[_], A] = RestCodec[F, A]
+
+  override def argsBiinvariant[F[_] : Functor]: Rpc.BiinvariantF[F, Args] = {
+    type ArgsF[A, B] = Args[F, A, B]
+    new Biinvariant[ArgsF] {
+      override def biimap[A, B, C, D](fab: ArgsF[A, B])(fa: A => C)(ga: C => A)(fb: B => D)(gb: D => B): ArgsF[C, D] =
+        ??? // TODO
+    }
+  }
+
+  override def codecInvariant[F[_]: Functor]: Rpc.InvariantF[F, Codec] = {
+    type CodecF[A] = Codec[F, A]
+    new Invariant[CodecF] {
+      override def imap[A, B](fa: CodecF[A])(f: A => B)(g: B => A): CodecF[B] = fa.copy(
+        decoder = fa.decoder.map(f),
+        encoder = fa.encoder.contramap(g)
+      )
+    }
+  }
 }
 
 object Rest extends Rest {
-  final case class RestArgs(method: Method, segments: Vector[Uri.Path.Segment])
+  final case class RestArgs[A, B, UriPath](method: Method,
+                                           constPrefixSegments: Vector[Uri.Path.Segment],
+                                           route: Inject[UriPath, Uri.Path])
 
   object RestArgs {
-    implicit def stringArgs(route: (Method, Uri.Path)): RestArgs =
-      RestArgs(route._1, route._2.segments)
+    implicit def methodAndPathArgs[A, B](route: (Method, Uri.Path)): RestArgs[A, B, Unit] =
+      RestArgs(route._1, route._2.segments, new Inject[Unit, Uri.Path] {
+        override val inj: Unit => Uri.Path = _ => Uri.Path(route._2.segments)
+
+        override val prj: Uri.Path => Option[Unit] = _ => Some(())
+      })
+
+    implicit def matchPath[UriPath, Body, B](route: (Method, Inject[UriPath, Uri.Path])): RestArgs[PathAndBody[UriPath, Body], B, UriPath] =
+      RestArgs(route._1, Vector.empty, route._2)
   }
+
+  implicit def pathAndBodyEntityCodec[F[_]: Functor, UriPath, Body](implicit
+                                                                    decoder: EntityDecoder[F, Body],
+                                                                    encoder: EntityEncoder[F, Body]): RestCodec[F, PathAndBody[UriPath, Body]] =
+    RestCodec(decoder.map(e => PathAndBody(???, e)), encoder.contramap(_.body))
+
+  case class PathAndBody[UriPath, Body](uriPath: UriPath, body: Body)
 
   case class RestRpcImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RemoteRpcImpl[F, Rest] {
     override def run[A, B, Args](rpc: Rpc[F, A, B, Rest], a: A): F[B] = {
@@ -28,7 +63,7 @@ object Rest extends Rest {
       implicit val decoder: EntityDecoder[F, B] = rpc.bCodec.decoder
       client.expect[B](Request[F](
         method = rpc.args.method,
-        uri = uri.withPath(uri.path.addSegments(rpc.args.segments))
+        uri = uri.withPath(uri.path.addSegments(rpc.args.constPrefixSegments))
       ).withEntity(a))
     }
   }
@@ -51,7 +86,7 @@ object Rest extends Rest {
   implicit class RpcRoutesRestOps[F[_]](routes: RpcRoutes[F, Rest]) {
     def toRoutes(implicit F: Sync[F]): HttpRoutes[F] = {
       val implMap: Map[(Method, Vector[Uri.Path.Segment]), LocalRpcImpl[F, _, _, Rest]] =
-        routes.impls.map(impl => (impl.rpc.args.method, impl.rpc.args.segments) -> impl).toMap
+        routes.impls.map(impl => (impl.rpc.args.method, impl.rpc.args.constPrefixSegments) -> impl).toMap
 
       def run[A, B](impl: LocalRpcImpl[F, A, B, Rest], request: Request[F]): F[Response[F]] = {
         implicit val decoder: EntityDecoder[F, A] = impl.rpc.aCodec.decoder

@@ -1,11 +1,14 @@
 package de.lolhens.remoteio
 
+import cats.syntax.invariant._
+import cats.{Functor, Invariant}
+import de.lolhens.remoteio.Biinvariant.syntax._
 import de.lolhens.remoteio.Rpc.{LocalRpcImpl, Protocol, RemoteRpcImpl, RpcRoutes}
 
-final case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P)
-                                                          (val args: protocol.Args)
-                                                          (val aCodec: protocol.Codec[F, A],
-                                                           val bCodec: protocol.Codec[F, B]) {
+sealed abstract case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P)
+                                                                    (val args: protocol.Args[F, A, B])
+                                                                    (val aCodec: protocol.Codec[F, A],
+                                                                     val bCodec: protocol.Codec[F, B]) {
   def apply(a: A)(implicit impl: RemoteRpcImpl[F, P]): F[B] = impl.run(this, a)
 
   def impl(f: A => F[B]): LocalRpcImpl[F, A, B, P] = new LocalRpcImpl[F, A, B, P](this, f) {}
@@ -25,28 +28,48 @@ final case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P)
 object Rpc {
   final class RpcPartiallyApplied[F[_], A, B] private[Rpc](val unit: Unit) extends AnyVal {
     def apply[P <: Protocol[P]](protocol: P)
-                               (args: protocol.Args)
+                               (args: protocol.Args[F, A, B])
                                (implicit
                                 aCodec: protocol.Codec[F, A],
                                 bCodec: protocol.Codec[F, B]): Rpc[F, A, B, P] =
-      new Rpc[F, A, B, P](protocol)(args)(aCodec, bCodec)
+      new Rpc[F, A, B, P](protocol)(args)(aCodec, bCodec) {}
 
     def apply[P <: Protocol[P]](protocol: P)
                                ()
                                (implicit
-                                args: protocol.Args,
+                                args: protocol.Args[F, A, B],
                                 aCodec: protocol.Codec[F, A],
                                 bCodec: protocol.Codec[F, B],
                                 dummyImplicit: DummyImplicit): Rpc[F, A, B, P] =
-      new Rpc[F, A, B, P](protocol)(args)(aCodec, bCodec)
+      new Rpc[F, A, B, P](protocol)(args)(aCodec, bCodec) {}
   }
 
   def apply[F[_], A, B]: RpcPartiallyApplied[F, A, B] = new RpcPartiallyApplied[F, A, B](())
 
+  implicit def biinvariant[F[_]: Functor, P <: Protocol[P]]: Biinvariant[[A, B] =>> Rpc[F, A, B, P]] = {
+    type RpcFP[A, B] = Rpc[F, A, B, P]
+    new Biinvariant[RpcFP] {
+      override def biimap[A, B, C, D](fab: RpcFP[A, B])(fa: A => C)(ga: C => A)(fb: B => D)(gb: D => B): RpcFP[C, D] = {
+        type ArgsF[A, B] = fab.protocol.Args[F, A, B]
+        type CodecF[A] = fab.protocol.Codec[F, A]
+        implicit val biinvariantArgs: Biinvariant[ArgsF] = fab.protocol.argsBiinvariant[F]
+        implicit val invariantCodec: Invariant[CodecF] = fab.protocol.codecInvariant[F]
+        new Rpc[F, C, D, P](fab.protocol)(fab.args.biimap(fa)(ga)(fb)(gb))(fab.aCodec.imap(fa)(ga), fab.bCodec.imap(fb)(gb)) {}
+      }
+    }
+  }
+
+  type BiinvariantF[F[_], G[_[_], _, _]] = Biinvariant[[A, B] =>> G[F, A, B]]
+  type InvariantF[F[_], G[_[_], _]] = Invariant[[A] =>> G[F, A]]
+
   trait Protocol[P <: Protocol[P]] {
-    type Args
+    type Args[F[_], A, B]
 
     type Codec[F[_], A]
+
+    def argsBiinvariant[F[_]: Functor]: BiinvariantF[F, Args]
+
+    def codecInvariant[F[_]: Functor]: InvariantF[F, Codec]
   }
 
   trait RemoteRpcImpl[F[_], P <: Protocol[P]] {
