@@ -16,7 +16,7 @@ class HttpPostTest extends CatsEffectSuite {
   object TestRepo extends HttpPostRpcRepo("test") {
     val rpc1: Rpc[IO, String, String, HttpPost] = Rpc[IO, String, String](HttpPost)()
     val rpc2: Rpc[IO, String, String, HttpPost] = Rpc[IO, String, String](HttpPost)()
-    val rpc2Bin: MappedRpc[IO, Array[Byte], Array[Byte], HttpPost] = Rpc.biinvariant[IO, HttpPost].biimap(rpc2)(s2b)(b2s)(s2b)(b2s)
+    val rpc2Bin: MappedRpc[IO, Array[Byte], Array[Byte], HttpPost] = Rpc.profunctor[IO, HttpPost].dimap(rpc2)(b2s)(s2b)
   }
 
   val rpcRoutes = RpcRoutes(

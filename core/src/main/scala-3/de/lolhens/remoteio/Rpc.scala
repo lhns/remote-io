@@ -1,17 +1,11 @@
 package de.lolhens.remoteio
 
-import cats.syntax.invariant._
+import cats.Functor
+import cats.arrow.Profunctor
 import cats.syntax.functor._
-import cats.{Functor, Invariant}
-import de.lolhens.remoteio.Biinvariant.syntax._
 import de.lolhens.remoteio.Rpc.{LocalRpcImpl, Protocol, RemoteRpcImpl, RpcRoutes}
 
 sealed trait MappedRpc[F[_], A, B, P <: Protocol[P]] {
-  val protocol: P
-  def args: protocol.Args[F, A, B]
-  def aCodec: protocol.Codec[F, A]
-  def bCodec: protocol.Codec[F, B]
-
   def apply(a: A)(implicit impl: RemoteRpcImpl[F, P]): F[B]
 }
 
@@ -56,37 +50,21 @@ object Rpc {
 
   def apply[F[_], A, B]: RpcPartiallyApplied[F, A, B] = new RpcPartiallyApplied[F, A, B](())
 
-  implicit def biinvariant[F[_]: Functor, P <: Protocol[P]]: Biinvariant[[A, B] =>> MappedRpc[F, A, B, P]] = {
-    type RpcFP[A, B] = MappedRpc[F, A, B, P]
-    new Biinvariant[RpcFP] {
-      override def biimap[A, B, C, D](fab: RpcFP[A, B])(fa: A => C)(ga: C => A)(fb: B => D)(gb: D => B): RpcFP[C, D] = {
-        type ArgsF[A, B] = fab.protocol.Args[F, A, B]
-        type CodecF[A] = fab.protocol.Codec[F, A]
-        implicit val biinvariantArgs: Biinvariant[ArgsF] = fab.protocol.argsBiinvariant[F]
-        implicit val invariantCodec: Invariant[CodecF] = fab.protocol.codecInvariant[F]
-        new MappedRpc[F, C, D, P] {
-          override val protocol: P = fab.protocol
-          override def args: protocol.Args[F, C, D] = fab.args.biimap(fa)(ga)(fb)(gb).asInstanceOf[protocol.Args[F, C, D]]
-          override def aCodec: protocol.Codec[F, C] = fab.aCodec.imap(fa)(ga).asInstanceOf[protocol.Codec[F, C]]
-          override def bCodec: protocol.Codec[F, D] = fab.bCodec.imap(fb)(gb).asInstanceOf[protocol.Codec[F, D]]
+  type ProfunctorRpc[F[_], P <: Protocol[P], G[_[_], _, _, P2 <: Protocol[P2]]] = Profunctor[[A, B] =>> G[F, A, B, P]]
 
-          override def apply(a: C)(implicit impl: RemoteRpcImpl[F, P]): F[D] = fab.apply(ga(a)).map(fb)
-        }
+  implicit def profunctor[F[_] : Functor, P <: Protocol[P]]: ProfunctorRpc[F, P, MappedRpc] = {
+    type RpcFP[A, B] = MappedRpc[F, A, B, P]
+    new Profunctor[RpcFP] {
+      override def dimap[A, B, C, D](fab: RpcFP[A, B])(f: C => A)(g: B => D): RpcFP[C, D] = new MappedRpc[F, C, D, P] {
+        override def apply(a: C)(implicit impl: RemoteRpcImpl[F, P]): F[D] = fab.apply(f(a)).map(g)
       }
     }
   }
-
-  type BiinvariantF[F[_], G[_[_], _, _]] = Biinvariant[[A, B] =>> G[F, A, B]]
-  type InvariantF[F[_], G[_[_], _]] = Invariant[[A] =>> G[F, A]]
 
   trait Protocol[P <: Protocol[P]] {
     type Args[F[_], A, B]
 
     type Codec[F[_], A]
-
-    def argsBiinvariant[F[_]: Functor]: BiinvariantF[F, Args]
-
-    def codecInvariant[F[_]: Functor]: InvariantF[F, Codec]
   }
 
   trait RemoteRpcImpl[F[_], P <: Protocol[P]] {

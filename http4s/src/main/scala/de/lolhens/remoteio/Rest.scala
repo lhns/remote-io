@@ -1,9 +1,9 @@
 package de.lolhens.remoteio
 
-import cats.{Functor, Inject, Invariant}
 import cats.data.OptionT
 import cats.effect.kernel.{Concurrent, Sync}
 import cats.syntax.all._
+import cats.{Functor, Inject}
 import de.lolhens.remoteio.Rest.{RestArgs, RestCodec}
 import de.lolhens.remoteio.Rpc.{LocalRpcImpl, Protocol, RemoteRpcImpl, RpcRoutes}
 import org.http4s.client.Client
@@ -13,24 +13,6 @@ trait Rest extends Protocol[Rest] {
   override type Args[F[_], A, B] = RestArgs[A, B, _]
 
   override type Codec[F[_], A] = RestCodec[F, A]
-
-  override def argsBiinvariant[F[_] : Functor]: Rpc.BiinvariantF[F, Args] = {
-    type ArgsF[A, B] = Args[F, A, B]
-    new Biinvariant[ArgsF] {
-      override def biimap[A, B, C, D](fab: ArgsF[A, B])(fa: A => C)(ga: C => A)(fb: B => D)(gb: D => B): ArgsF[C, D] =
-        ??? // TODO
-    }
-  }
-
-  override def codecInvariant[F[_]: Functor]: Rpc.InvariantF[F, Codec] = {
-    type CodecF[A] = Codec[F, A]
-    new Invariant[CodecF] {
-      override def imap[A, B](fa: CodecF[A])(f: A => B)(g: B => A): CodecF[B] = fa.copy(
-        decoder = fa.decoder.map(f),
-        encoder = fa.encoder.contramap(g)
-      )
-    }
-  }
 }
 
 object Rest extends Rest {
@@ -50,9 +32,9 @@ object Rest extends Rest {
       RestArgs(route._1, Vector.empty, route._2)
   }
 
-  implicit def pathAndBodyEntityCodec[F[_]: Functor, UriPath, Body](implicit
-                                                                    decoder: EntityDecoder[F, Body],
-                                                                    encoder: EntityEncoder[F, Body]): RestCodec[F, PathAndBody[UriPath, Body]] =
+  implicit def pathAndBodyEntityCodec[F[_] : Functor, UriPath, Body](implicit
+                                                                     decoder: EntityDecoder[F, Body],
+                                                                     encoder: EntityEncoder[F, Body]): RestCodec[F, PathAndBody[UriPath, Body]] =
     RestCodec(decoder.map(e => PathAndBody(???, e)), encoder.contramap(_.body))
 
   case class PathAndBody[UriPath, Body](uriPath: UriPath, body: Body)
