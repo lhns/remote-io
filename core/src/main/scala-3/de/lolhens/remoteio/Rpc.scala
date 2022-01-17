@@ -12,6 +12,15 @@ sealed trait Rpc[F[_], A, B, P <: Protocol[P]] {
   def impl(f: A => F[B]): LocalRpcImpl[F, A, B, P]
 
   private[Rpc] var _implCache: (RpcRoutes[F, P], LocalRpcImpl[F, A, B, P]) = null
+
+  protected val eqObj: Any
+
+  override def equals(obj: Any): Boolean = obj match {
+    case rpc: Rpc[F, A, B, P]@unchecked => rpc.eqObj == eqObj
+    case _ => false
+  }
+
+  override def hashCode(): Int = eqObj.hashCode()
 }
 
 object Rpc {
@@ -21,18 +30,11 @@ object Rpc {
                                                                                         val bCodec: protocol.Codec[F, B]) extends Rpc[F, A, B, P] {
     override val serializable: SerializableRpc[F, _, _, P] = this
 
-    def apply(a: A)(implicit impl: RemoteRpcImpl[F, P]): F[B] = impl.run(this, a)
+    override def apply(a: A)(implicit impl: RemoteRpcImpl[F, P]): F[B] = impl.run(this, a)
 
-    def impl(f: A => F[B]): LocalSerializableRpcImpl[F, A, B, P] = new LocalSerializableRpcImpl[F, A, B, P](this, f) {}
+    override def impl(f: A => F[B]): LocalSerializableRpcImpl[F, A, B, P] = new LocalSerializableRpcImpl[F, A, B, P](this, f) {}
 
-    private val eqObj = (protocol, args)
-
-    override def equals(obj: Any): Boolean = obj match {
-      case rpc: SerializableRpc[F, A, B, P]@unchecked => rpc.eqObj == eqObj
-      case _ => false
-    }
-
-    override def hashCode(): Int = eqObj.hashCode()
+    override protected val eqObj = (protocol, args)
   }
 
   final class RpcPartiallyApplied[F[_], A, B] private[Rpc](val unit: Unit) extends AnyVal {
@@ -76,6 +78,8 @@ object Rpc {
             override def run: C => F[D] = f
           }
         }
+
+        override protected val eqObj = (serializable, fa, ga, fb, gb)
       }
     }
   }
@@ -117,9 +121,9 @@ object Rpc {
     }
 
     protected val implMap: Map[Rpc[F, _, _, P], LocalRpcImpl[F, _, _, P]] =
-      impls.iterator.map(impl => impl.rpc -> impl).toMap
+      impls.iterator.map(_.serializable).map(impl => impl.rpc -> impl).toMap
 
-    def apply[A, B](rpc: Rpc[F, A, B, P]): LocalRpcImpl[F, A, B, P] = {
+    def apply[A, B](rpc: SerializableRpc[F, A, B, P]): LocalRpcImpl[F, A, B, P] = {
       val implCache = rpc._implCache
       if (implCache != null && (implCache._1 eq this)) {
         implCache._2
