@@ -15,16 +15,16 @@ class HttpPostTest extends CatsEffectSuite {
 
   object TestRepo extends HttpPostRpcRepo("test") {
     val rpc1: Rpc[IO, String, String, HttpPost] = Rpc[IO, String, String](HttpPost)()
-    val rpc2: Rpc[IO, String, String, HttpPost] = Rpc[IO, String, String](HttpPost)()
-    val rpc2Bin: MappedRpc[IO, Array[Byte], Array[Byte], HttpPost] = Rpc.profunctor[IO, HttpPost].dimap(rpc2)(b2s)(s2b)
+    //val rpc2: Rpc[IO, String, String, HttpPost] = Rpc[IO, String, String](HttpPost)()
+    val rpc2Bin: Rpc[IO, Array[Byte], Array[Byte], HttpPost] = Rpc.biinvariant[IO, HttpPost].biimap(Rpc[IO, String, String](HttpPost)())(s2b)(b2s)(s2b)(b2s)
   }
 
   val rpcRoutes = RpcRoutes(
     TestRepo.rpc1.impl { string =>
       IO.pure("rpc1: " + string)
     },
-    TestRepo.rpc2.impl { string =>
-      IO.pure("rpc2: " + string)
+    TestRepo.rpc2Bin.impl { string =>
+      IO.pure(s2b("rpc2: " + b2s(string)))
     }
   )
 
@@ -35,7 +35,7 @@ class HttpPostTest extends CatsEffectSuite {
     )
 
     TestRepo.rpc1("a").map { e => assertEquals(e, "rpc1: a") } >>
-      TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") } >>
+      //TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") } >>
       TestRepo.rpc2Bin(s2b("b-bin")).map { e => assertEquals(b2s(e), "rpc2: b-bin")}
   }
 
@@ -43,7 +43,7 @@ class HttpPostTest extends CatsEffectSuite {
     implicit val remoteRpcImpl: RemoteRpcImpl[IO, HttpPost] = rpcRoutes.localImpl
 
     TestRepo.rpc1("a").map { e => assertEquals(e, "rpc1: a") } >>
-      TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") } >>
+      //TestRepo.rpc2("b").map { e => assertEquals(e, "rpc2: b") } >>
       TestRepo.rpc2Bin(s2b("b-bin")).map { e => assertEquals(b2s(e), "rpc2: b-bin")}
   }
 }

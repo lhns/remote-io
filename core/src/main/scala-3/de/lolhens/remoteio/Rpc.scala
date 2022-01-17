@@ -1,42 +1,47 @@
 package de.lolhens.remoteio
 
 import cats.Functor
-import cats.arrow.Profunctor
 import cats.syntax.functor._
-import de.lolhens.remoteio.Rpc.{LocalRpcImpl, Protocol, RemoteRpcImpl, RpcRoutes}
+import de.lolhens.remoteio.Rpc.{LocalRpcImpl, Protocol, RemoteRpcImpl, RpcRoutes, SerializableRpc}
 
-sealed trait MappedRpc[F[_], A, B, P <: Protocol[P]] {
+sealed trait Rpc[F[_], A, B, P <: Protocol[P]] {
+  val serializable: SerializableRpc[F, _, _, P]
+
   def apply(a: A)(implicit impl: RemoteRpcImpl[F, P]): F[B]
-}
 
-sealed abstract case class Rpc[F[_], A, B, P <: Protocol[P]] private(protocol: P)
-                                                                    (val args: protocol.Args[F, A, B])
-                                                                    (val aCodec: protocol.Codec[F, A],
-                                                                     val bCodec: protocol.Codec[F, B]) extends MappedRpc[F, A, B, P] {
-  def apply(a: A)(implicit impl: RemoteRpcImpl[F, P]): F[B] = impl.run(this, a)
+  def impl(f: A => F[B]): LocalRpcImpl[F, A, B, P]
 
-  def impl(f: A => F[B]): LocalRpcImpl[F, A, B, P] = new LocalRpcImpl[F, A, B, P](this, f) {}
-
-  private val eqObj = (protocol, args)
-
-  override def equals(obj: Any): Boolean = obj match {
-    case rpc: Rpc[F, A, B, P]@unchecked => rpc.eqObj == eqObj
-    case _ => false
-  }
-
-  override def hashCode(): Int = eqObj.hashCode()
-
-  private var _implCache: (RpcRoutes[F, P], LocalRpcImpl[F, A, B, P]) = null
+  private[Rpc] var _implCache: (RpcRoutes[F, P], LocalRpcImpl[F, A, B, P]) = null
 }
 
 object Rpc {
+  sealed abstract case class SerializableRpc[F[_], A, B, P <: Protocol[P]] private[Rpc](protocol: P)
+                                                                                       (val args: protocol.Args[F, A, B])
+                                                                                       (val aCodec: protocol.Codec[F, A],
+                                                                                        val bCodec: protocol.Codec[F, B]) extends Rpc[F, A, B, P] {
+    override val serializable: SerializableRpc[F, _, _, P] = this
+
+    def apply(a: A)(implicit impl: RemoteRpcImpl[F, P]): F[B] = impl.run(this, a)
+
+    def impl(f: A => F[B]): LocalSerializableRpcImpl[F, A, B, P] = new LocalSerializableRpcImpl[F, A, B, P](this, f) {}
+
+    private val eqObj = (protocol, args)
+
+    override def equals(obj: Any): Boolean = obj match {
+      case rpc: SerializableRpc[F, A, B, P]@unchecked => rpc.eqObj == eqObj
+      case _ => false
+    }
+
+    override def hashCode(): Int = eqObj.hashCode()
+  }
+
   final class RpcPartiallyApplied[F[_], A, B] private[Rpc](val unit: Unit) extends AnyVal {
     def apply[P <: Protocol[P]](protocol: P)
                                (args: protocol.Args[F, A, B])
                                (implicit
                                 aCodec: protocol.Codec[F, A],
                                 bCodec: protocol.Codec[F, B]): Rpc[F, A, B, P] =
-      new Rpc[F, A, B, P](protocol)(args)(aCodec, bCodec) {}
+      new SerializableRpc[F, A, B, P](protocol)(args)(aCodec, bCodec) {}
 
     def apply[P <: Protocol[P]](protocol: P)
                                ()
@@ -45,18 +50,32 @@ object Rpc {
                                 aCodec: protocol.Codec[F, A],
                                 bCodec: protocol.Codec[F, B],
                                 dummyImplicit: DummyImplicit): Rpc[F, A, B, P] =
-      new Rpc[F, A, B, P](protocol)(args)(aCodec, bCodec) {}
+      new SerializableRpc[F, A, B, P](protocol)(args)(aCodec, bCodec) {}
   }
 
   def apply[F[_], A, B]: RpcPartiallyApplied[F, A, B] = new RpcPartiallyApplied[F, A, B](())
 
-  type ProfunctorRpc[F[_], P <: Protocol[P], G[_[_], _, _, P2 <: Protocol[P2]]] = Profunctor[[A, B] =>> G[F, A, B, P]]
+  type BiinvariantRpc[F[_], P <: Protocol[P], G[_[_], _, _, P2 <: Protocol[P2]]] = Biinvariant[[A, B] =>> G[F, A, B, P]]
 
-  implicit def profunctor[F[_] : Functor, P <: Protocol[P]]: ProfunctorRpc[F, P, MappedRpc] = {
-    type RpcFP[A, B] = MappedRpc[F, A, B, P]
-    new Profunctor[RpcFP] {
-      override def dimap[A, B, C, D](fab: RpcFP[A, B])(f: C => A)(g: B => D): RpcFP[C, D] = new MappedRpc[F, C, D, P] {
-        override def apply(a: C)(implicit impl: RemoteRpcImpl[F, P]): F[D] = fab.apply(f(a)).map(g)
+  implicit def biinvariant[F[_] : Functor, P <: Protocol[P]]: BiinvariantRpc[F, P, Rpc] = {
+    type RpcFP[A, B] = Rpc[F, A, B, P]
+    new Biinvariant[RpcFP] {
+      override def biimap[A, B, C, D](fab: RpcFP[A, B])(fa: A => C)(ga: C => A)(fb: B => D)(gb: D => B): RpcFP[C, D] = new Rpc[F, C, D, P] {
+        self =>
+        override val serializable: SerializableRpc[F, _, _, P] = fab.serializable
+
+        override def apply(a: C)(implicit impl: RemoteRpcImpl[F, P]): F[D] = fab.apply(ga(a)).map(fb)
+
+        override def impl(f: C => F[D]): LocalRpcImpl[F, C, D, P] = {
+          val localRpcImpl = fab.impl(a => f(fa(a)).map(gb))
+          new LocalRpcImpl[F, C, D, P] {
+            override def serializable: LocalSerializableRpcImpl[F, _, _, P] = localRpcImpl.serializable
+
+            override def rpc: Rpc[F, C, D, P] = self
+
+            override def run: C => F[D] = f
+          }
+        }
       }
     }
   }
@@ -67,21 +86,38 @@ object Rpc {
     type Codec[F[_], A]
   }
 
-  trait RemoteRpcImpl[F[_], P <: Protocol[P]] {
+  trait MappedRemoteRpcImpl[F[_], P <: Protocol[P]] {
+    def remoteRpcImpl: RemoteRpcImpl[F, P]
+
     def run[A, B, Args](rpc: Rpc[F, A, B, P], a: A): F[B]
   }
 
-  sealed abstract case class LocalRpcImpl[F[_], A, B, P <: Protocol[P]] private[Rpc](rpc: Rpc[F, A, B, P],
-                                                                                     run: A => F[B])
+  trait RemoteRpcImpl[F[_], P <: Protocol[P]] {
+    def run[A, B, Args](rpc: SerializableRpc[F, A, B, P], a: A): F[B]
+  }
+
+  trait LocalRpcImpl[F[_], A, B, P <: Protocol[P]] {
+    def serializable: LocalSerializableRpcImpl[F, _, _, P]
+
+    def rpc: Rpc[F, A, B, P]
+
+    def run: A => F[B]
+  }
+
+  sealed abstract case class LocalSerializableRpcImpl[F[_], A, B, P <: Protocol[P]] private[Rpc](rpc: SerializableRpc[F, A, B, P],
+                                                                                                 run: A => F[B]) extends LocalRpcImpl[F, A, B, P] {
+    override def serializable: LocalSerializableRpcImpl[F, _, _, P] = this
+  }
 
   final case class RpcRoutes[F[_], P <: Protocol[P]](impls: LocalRpcImpl[F, _, _, P]*) {
-    impls.groupBy(_.rpc).foreach {
+    impls.groupBy(_.rpc.serializable).foreach {
       case (rpc, impls) =>
         if (impls.size > 1)
           throw new IllegalArgumentException(s"rpc must be unique: $rpc")
     }
 
-    protected val implMap: Map[Rpc[F, _, _, P], LocalRpcImpl[F, _, _, P]] = impls.map(impl => impl.rpc -> impl).toMap
+    protected val implMap: Map[Rpc[F, _, _, P], LocalRpcImpl[F, _, _, P]] =
+      impls.iterator.map(impl => impl.rpc -> impl).toMap
 
     def apply[A, B](rpc: Rpc[F, A, B, P]): LocalRpcImpl[F, A, B, P] = {
       val implCache = rpc._implCache
@@ -95,7 +131,7 @@ object Rpc {
     }
 
     lazy val localImpl: RemoteRpcImpl[F, P] = new RemoteRpcImpl[F, P] {
-      override def run[A, B, Args](rpc: Rpc[F, A, B, P], a: A): F[B] = apply(rpc).run(a)
+      override def run[A, B, Args](rpc: SerializableRpc[F, A, B, P], a: A): F[B] = apply(rpc).run(a)
     }
   }
 }

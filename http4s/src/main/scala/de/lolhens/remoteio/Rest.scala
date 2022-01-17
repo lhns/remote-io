@@ -5,7 +5,7 @@ import cats.effect.kernel.{Concurrent, Sync}
 import cats.syntax.all._
 import cats.{Functor, Inject}
 import de.lolhens.remoteio.Rest.{RestArgs, RestCodec}
-import de.lolhens.remoteio.Rpc.{LocalRpcImpl, Protocol, RemoteRpcImpl, RpcRoutes}
+import de.lolhens.remoteio.Rpc.{LocalRpcImpl, LocalSerializableRpcImpl, Protocol, RemoteRpcImpl, RpcRoutes, SerializableRpc}
 import org.http4s.client.Client
 import org.http4s.{EntityDecoder, EntityEncoder, HttpRoutes, Method, Request, Response, Status, Uri}
 
@@ -40,7 +40,7 @@ object Rest extends Rest {
   case class PathAndBody[UriPath, Body](uriPath: UriPath, body: Body)
 
   case class RestRpcImpl[F[_] : Sync](client: Client[F], uri: Uri) extends RemoteRpcImpl[F, Rest] {
-    override def run[A, B, Args](rpc: Rpc[F, A, B, Rest], a: A): F[B] = {
+    override def run[A, B, Args](rpc: SerializableRpc[F, A, B, Rest], a: A): F[B] = {
       implicit val encoder: EntityEncoder[F, A] = rpc.aCodec.encoder
       implicit val decoder: EntityDecoder[F, B] = rpc.bCodec.decoder
       client.expect[B](Request[F](
@@ -68,9 +68,9 @@ object Rest extends Rest {
   implicit class RpcRoutesRestOps[F[_]](routes: RpcRoutes[F, Rest]) {
     def toRoutes(implicit F: Sync[F]): HttpRoutes[F] = {
       val implMap: Map[(Method, Vector[Uri.Path.Segment]), LocalRpcImpl[F, _, _, Rest]] =
-        routes.impls.map(impl => (impl.rpc.args.method, impl.rpc.args.constPrefixSegments) -> impl).toMap
+        routes.impls.iterator.map(impl => (impl.rpc.serializable.args.method, impl.rpc.serializable.args.constPrefixSegments) -> impl).toMap
 
-      def run[A, B](impl: LocalRpcImpl[F, A, B, Rest], request: Request[F]): F[Response[F]] = {
+      def run[A, B](impl: LocalSerializableRpcImpl[F, A, B, Rest], request: Request[F]): F[Response[F]] = {
         implicit val decoder: EntityDecoder[F, A] = impl.rpc.aCodec.decoder
         implicit val encoder: EntityEncoder[F, B] = impl.rpc.bCodec.encoder
         for {
@@ -83,7 +83,7 @@ object Rest extends Rest {
       HttpRoutes[F] { request =>
         for {
           impl <- OptionT.fromOption[F](implMap.get((request.method, request.pathInfo.segments)))
-          response <- OptionT.liftF(run(impl, request))
+          response <- OptionT.liftF(run(impl.serializable, request))
         } yield
           response
       }
