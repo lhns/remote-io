@@ -25,9 +25,7 @@ sealed trait Rpc[F[_], A, B, P <: Protocol[P]] {
 
 object Rpc {
   sealed abstract case class SerializableRpc[F[_], A, B, P <: Protocol[P]] private[Rpc](protocol: P)
-                                                                                       (val args: protocol.Args[F, A, B])
-                                                                                       (val aCodec: protocol.Codec[F, A],
-                                                                                        val bCodec: protocol.Codec[F, B]) extends Rpc[F, A, B, P] {
+                                                                                       (val args: protocol.Args[F, A, B]) extends Rpc[F, A, B, P] {
     override val serializable: SerializableRpc[F, _, _, P] = this
 
     override def apply(a: A)(implicit impl: RemoteRpcImpl[F, P]): F[B] = impl.run(this, a)
@@ -39,20 +37,15 @@ object Rpc {
 
   final class RpcPartiallyApplied[F[_], A, B] private[Rpc](val unit: Unit) extends AnyVal {
     def apply[P <: Protocol[P]](protocol: P)
-                               (args: protocol.Args[F, A, B])
-                               (implicit
-                                aCodec: protocol.Codec[F, A],
-                                bCodec: protocol.Codec[F, B]): Rpc[F, A, B, P] =
-      new SerializableRpc[F, A, B, P](protocol)(args)(aCodec, bCodec) {}
+                               (args: protocol.Args[F, A, B]): Rpc[F, A, B, P] =
+      new SerializableRpc[F, A, B, P](protocol)(args) {}
 
     def apply[P <: Protocol[P]](protocol: P)
                                ()
                                (implicit
                                 args: protocol.Args[F, A, B],
-                                aCodec: protocol.Codec[F, A],
-                                bCodec: protocol.Codec[F, B],
                                 dummyImplicit: DummyImplicit): Rpc[F, A, B, P] =
-      new SerializableRpc[F, A, B, P](protocol)(args)(aCodec, bCodec) {}
+      new SerializableRpc[F, A, B, P](protocol)(args) {}
   }
 
   def apply[F[_], A, B]: RpcPartiallyApplied[F, A, B] = new RpcPartiallyApplied[F, A, B](())
@@ -86,8 +79,6 @@ object Rpc {
 
   trait Protocol[P <: Protocol[P]] {
     type Args[F[_], A, B]
-
-    type Codec[F[_], A]
   }
 
   trait RemoteRpcImpl[F[_], P <: Protocol[P]] {
