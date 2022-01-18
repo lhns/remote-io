@@ -90,12 +90,6 @@ object Rpc {
     type Codec[F[_], A]
   }
 
-  trait MappedRemoteRpcImpl[F[_], P <: Protocol[P]] {
-    def remoteRpcImpl: RemoteRpcImpl[F, P]
-
-    def run[A, B, Args](rpc: Rpc[F, A, B, P], a: A): F[B]
-  }
-
   trait RemoteRpcImpl[F[_], P <: Protocol[P]] {
     def run[A, B, Args](rpc: SerializableRpc[F, A, B, P], a: A): F[B]
   }
