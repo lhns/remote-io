@@ -100,7 +100,7 @@ object Rpc {
   }
 
   final case class RpcRoutes[F[_], P <: Protocol[P]](impls: LocalRpcImpl[F, _, _, P]*) {
-    impls.groupBy(_.rpc).foreach {
+    impls.groupBy(_.rpc.serializable).foreach {
       case (rpc, impls) =>
         if (impls.size > 1)
           throw new IllegalArgumentException(s"rpc must be unique: $rpc")
