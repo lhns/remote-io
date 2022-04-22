@@ -17,12 +17,20 @@ object Rest extends Rest {
   final case class RestArgs[F[_], A, B, UriPath](method: Method,
                                                  constPrefixSegments: Vector[Uri.Path.Segment],
                                                  route: Inject[UriPath, Uri.Path],
+                                                 aCodec: RestUriCodec[F, A, UriPath],
+                                                 bCodec: RestCodec[F, B])
+
+
+  final case class RestArgs2[F[_], A, B, UriPath](method: Method,
+                                                 constPrefixSegments: Vector[Uri.Path.Segment],
+                                                 route: Inject[UriPath, Uri.Path],
                                                  aCodec: RestCodec[F, A],
                                                  bCodec: RestCodec[F, B])
 
   object RestArgs {
-    implicit def methodAndPathArgs[F[_], UriPath, A, B](route: (Method, Uri.Path))
-                                                       (implicit aCodec: RestCodec[F, A],
+    implicit def methodAndPathArgs[F[_], A, B](route: (Method, Uri.Path))
+                                                       (implicit
+                                                        aCodec: RestCodec[F, A],
                                                         bCodec: RestCodec[F, B]): RestArgs[F, A, B, Unit] =
       RestArgs(route._1, route._2.segments, new Inject[Unit, Uri.Path] {
         override val inj: Unit => Uri.Path = _ => Uri.Path(route._2.segments)
@@ -30,17 +38,12 @@ object Rest extends Rest {
         override val prj: Uri.Path => Option[Unit] = _ => Some(())
       }, aCodec, bCodec)
 
-    implicit def matchPath[F[_], UriPath, Body, A, B](route: (Method, Inject[UriPath, Uri.Path]))
-                                                     (implicit aCodec: RestCodec[F, PathAndBody[UriPath, Body]],
-                                                      bCodec: RestCodec[F, B]): RestArgs[F, PathAndBody[UriPath, Body], B, UriPath] =
+    implicit def matchPath[F[_], A, B, UriPath](route: (Method, Inject[UriPath, Uri.Path]))
+                                                     (implicit
+                                                      aCodec: RestCodec[F, A],
+                                                      bCodec: RestCodec[F, B]): RestArgs[F, (UriPath, A), B, UriPath] =
       RestArgs(route._1, Vector.empty, route._2, aCodec, bCodec)
   }
-
-  /*implicit def pathAndBodyEntityCodec[F[_] : Functor, UriPath, Body](implicit
-                                                                     decoder: EntityDecoder[F, Body],
-                                                                     encoder: EntityEncoder[F, Body]): RestCodec[F, UriPath, Body] =
-    */
-  //RestCodec(decoder.map(e => PathAndBody(???, e)), encoder.contramap(_.body))
 
   case class PathAndBody[UriPath, Body](uriPath: UriPath, body: Body)
 
@@ -48,12 +51,15 @@ object Rest extends Rest {
     override def run[A, B, Args](rpc: SerializableRpc[F, A, B, Rest], a: A): F[B] = {
       implicit val encoder: EntityEncoder[F, A] = rpc.args.aCodec.encoder
       implicit val decoder: EntityDecoder[F, B] = rpc.args.bCodec.decoder
+      rpc.args.route.apply(a)
       client.expect[B](Request[F](
         method = rpc.args.method,
         uri = uri.withPath(uri.path.addSegments(rpc.args.constPrefixSegments))
       ).withEntity(a))
     }
   }
+
+  final case class RestUriCodec[F[_], A, UriPath]()
 
   final case class RestCodec[F[_], A](decoder: EntityDecoder[F, A],
                                       encoder: EntityEncoder[F, A])
