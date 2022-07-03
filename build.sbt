@@ -1,4 +1,4 @@
-lazy val scalaVersions = Seq("3.1.3", "2.13.7", "2.12.15")
+lazy val scalaVersions = Seq("3.1.0", "2.13.8", "2.12.15")
 
 ThisBuild / scalaVersion := scalaVersions.head
 ThisBuild / versionScheme := Some("early-semver")
@@ -25,7 +25,7 @@ lazy val commonSettings: SettingsDefinition = Def.settings(
   ),
 
   libraryDependencies ++= Seq(
-    "ch.qos.logback" % "logback-classic" % "1.2.8" % Test,
+    "ch.qos.logback" % "logback-classic" % "1.2.11" % Test,
     "de.lolhens" %%% "munit-tagless-final" % "0.2.0" % Test,
     "org.scalameta" %%% "munit" % "0.7.29" % Test,
   ),
@@ -58,7 +58,7 @@ name := (core.projectRefs.head / name).value
 
 val V = new {
   val catsEffect = "3.2.0"
-  val http4s = "0.23.7"
+  val http4s = "0.23.13"
   val sourcecode = "0.2.7"
 }
 
