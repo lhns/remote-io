@@ -57,7 +57,7 @@ lazy val commonSettings: SettingsDefinition = Def.settings(
 name := (core.projectRefs.head / name).value
 
 val V = new {
-  val catsEffect = "3.3.14"
+  val catsEffect = "3.4.0"
   val http4s = "0.23.16"
   val sourcecode = "0.3.0"
 }
