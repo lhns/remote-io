@@ -58,7 +58,7 @@ name := (core.projectRefs.head / name).value
 
 val V = new {
   val catsEffect = "3.5.0"
-  val http4s = "0.23.19"
+  val http4s = "0.23.21"
   val sourcecode = "0.3.0"
 }
 
